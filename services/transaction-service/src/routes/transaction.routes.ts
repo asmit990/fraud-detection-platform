@@ -1,24 +1,14 @@
-import express from "express";
+import { Router } from "express";
+import {
+  createTransaction,
+  getTransactions,
+  getTransactionById,
+} from "../controller/transaction.controller";
 
+const router = Router();
 
+router.get("/", getTransactions);
+router.post("/", createTransaction);
+router.get("/:id", getTransactionById);
 
-const app = express();
-
-
-
-app.get("/transactions", (req, res) => {
-
-})
-
-app.post("/transactions", (req, res) => {
-
-})
-
-
-app.get("/transactions/:id", (req, res) => {
-
-})
-
-app.listen(3000, () => {
-    console.log("Transaction service running on port 3000");
-})  
+export default router;
