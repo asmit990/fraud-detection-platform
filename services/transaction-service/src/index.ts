@@ -1,9 +1,8 @@
 import "dotenv/config";
 import express from "express";
-import pool, { initDb } from "./db";
+import pool from "./db";
 import transactionRoutes from "./routes/transaction.routes";
-import { connectProducer, publishMessage } from "./kafka";
-import { createTransaction } from "./controller/transaction.controller";
+import { connectProducer } from "./kafka";
 
 const app = express();
 app.use(express.json());
@@ -16,7 +15,7 @@ app.get("/health", (_req, res) => {
 });
 
 // Routes
-app.use("/transactions", transactionRoutes);
+app.use("/api/transactions", transactionRoutes);
 
 async function start() {
 try {
@@ -35,7 +34,7 @@ try {
 
   } catch (err) {
     console.error("Startup failed:", err);
-    process.exit(1);   // kill server if startup fails
+    process.exit(1);   
   }
 
 
