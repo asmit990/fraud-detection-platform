@@ -30,11 +30,11 @@ export async function createTransaction(
 
     const transaction = result.rows[0];
 
-    // Publish to Kafka for downstream fraud analysis
+
     try {
       await publishMessage(process.env.KAFKA_TOPIC ?? "transactions", transaction);
     } catch (kafkaErr) {
-      // Kafka failure should not block the HTTP response
+
       console.error("Kafka publish failed:", kafkaErr);
     }
 

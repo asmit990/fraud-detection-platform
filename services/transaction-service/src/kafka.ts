@@ -1,4 +1,4 @@
-import { Kafka } from "kafkajs"  
+import { Kafka, Partitioners } from "kafkajs"  
 
 const kafka = new Kafka({
   clientId: process.env.KAFKA_CLIENT_ID ?? "transaction-service",
@@ -6,8 +6,9 @@ const kafka = new Kafka({
 });
 
 
-const producer = kafka.producer();
-
+const producer = kafka.producer({
+  createPartitioner: Partitioners.LegacyPartitioner
+});
 
 export async function connectProducer() {
     await producer.connect()
