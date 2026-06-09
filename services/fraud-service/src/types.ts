@@ -1,4 +1,3 @@
-
 export interface Transaction {
   id: string;
   user_id: string;
@@ -8,11 +7,9 @@ export interface Transaction {
   device_id: string;
   timestamp: Date;
   risk_score: number;
-  fraud_status: "PENDING" | "FRAUD" | "LEGIT";
+  fraud_status: string;
   created_at: Date;
 }
-
-
 
 export interface FraudResult {
   ruleScore: number;
