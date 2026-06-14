@@ -5,7 +5,7 @@ import  largeAmountRule  from "../rules/largeAmount";
 import  velocityRule  from "../rules/velocity";
 import  geoAnomalyRule  from "../rules/geoAnomaly";
 import  deviceAnomalyRule  from "../rules/deviceAnomaly";
-import  nightActivityRule  from "../rules/nightActivity";
+import  {nightActivityRule} from "../rules/nightActivity";
 
 export async function fraudEngine(transaction: Transaction): Promise<void> {
 
@@ -21,7 +21,7 @@ export async function fraudEngine(transaction: Transaction): Promise<void> {
     velocityRule(transaction.user_id),
     geoAnomalyRule(transaction.user_id, transaction.country),
     deviceAnomalyRule(transaction.user_id, transaction.device_id),
-    nightActivityRule(transaction.timestamp.getTime())
+    nightActivityRule(transaction)  
   ]);
 
 

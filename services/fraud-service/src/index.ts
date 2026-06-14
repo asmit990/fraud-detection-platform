@@ -1,39 +1,32 @@
-import "dotenv/config"
-import express from "express";
-import pool from "./db"
-import { connectConsumer } from "./kafka"
+import "dotenv/config";
+import pool from "./db";
+import redis from "./redis";
+import { connectConsumer, startConsumer } from "./kafka";
+import { fraudEngine } from "./engine/fraudEngine";
+import { Transaction } from "./types";
 
-const app = express()
+async function start(): Promise<void> {
+  try {
+    await pool.connect();
+    console.log("Postgres connected");
 
-app.use(express.json())
+    await redis.ping();
+    console.log("Redis connected");
 
+    await connectConsumer();
 
-const PORT = process.env.PORT ?? 3002
+    // pass fraudEngine as the handler
+    await startConsumer(async (raw: string) => {
+      const transaction = JSON.parse(raw) as Transaction;
+      await fraudEngine(transaction);
+    });
 
+    console.log("Fraud service running...");
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok hai darling" });
-});
-
-
-
-async function start() {
-    try {
-        await pool.connect() 
-
-        console.log("Postgres connected")
-
-        await connectConsumer()
-        console.log("Kafka consumer connected")
-       
-        app.listen(PORT, () => {
-            console.log(`Fraud service running on port ${PORT}`);
-        })
-
-    } catch (error) {
-        console.error("Error connecting to Postgres:", error)
-    }
+  } catch (err) {
+    console.error("Startup failed:", err);
+    process.exit(1);
+  }
 }
 
-
-start()
+start();

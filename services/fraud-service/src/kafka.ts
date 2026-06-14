@@ -1,15 +1,21 @@
+import "dotenv/config"
+
 import {Kafka, Consumer} from "kafkajs"
-import  "dotenv/config"
+
 
 
 const kafka  = new Kafka({
     clientId: "fraud-service",
     brokers: [process.env.KAFKA_BROKER ?? "localhost:9092"],
+    retry: {
+    initialRetryTime: 300,
+    retries: 10         
+  }
 })
 
 
 const consumer: Consumer = kafka.consumer({
-  groupId: process.env.KAFKA_GROUP_ID ?? "fraud-service",
+  groupId: process.env.KAFKA_GROUP_ID ?? "fraud-service-group",
 });
 
 
@@ -17,13 +23,13 @@ export const connectConsumer = async (): Promise<void> => {
   await consumer.connect();
   await consumer.subscribe({
     topic: process.env.KAFKA_TOPIC ?? "transactions",
-    fromBeginning: false,
+    fromBeginning: true,
   });
   console.log("Kafka consumer connected");
 };
 
 
-export const startConsuming = async (
+export const startConsumer = async (
   handler: (transaction: string) => Promise<void>
 ): Promise<void> => {
   await consumer.run({
