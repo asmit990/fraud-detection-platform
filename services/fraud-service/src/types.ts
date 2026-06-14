@@ -5,10 +5,10 @@ export interface Transaction {
   currency: string;
   country: string;
   device_id: string;
-  timestamp: Date;
+  timestamp: string;
   risk_score: number;
   fraud_status: string;
-  created_at: Date;
+  created_at: string;
 }
 
 export interface FraudResult {

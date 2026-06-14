@@ -1,18 +1,6 @@
-//receives timestamp
- //   get hour from timestamp
- //   if hour >= 1 and hour <= 5 → return 20
-  //  else → return 0
+import { Transaction } from "../types";
 
-
-
-export default function nightActivityRule(timestamp: number): number {
-    const date = new Date(timestamp);
-    const hour = date.getUTCHours();
-
-    if (hour >= 1 && hour <= 5) {
-        return 20;
-    }
-    else {
-        return 0;
-    }
+export function nightActivityRule(transaction: Transaction): number {
+  const hour = new Date(transaction.timestamp).getHours();
+  return hour >= 1 && hour <= 5 ? 20 : 0;
 }

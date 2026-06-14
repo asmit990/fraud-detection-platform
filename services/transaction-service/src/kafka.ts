@@ -1,5 +1,5 @@
 import { Kafka, Partitioners } from "kafkajs"  
-
+import "dotenv/config"; 
 const kafka = new Kafka({
   clientId: process.env.KAFKA_CLIENT_ID ?? "transaction-service",
   brokers: [process.env.KAFKA_BROKER ?? "localhost:9092"],
