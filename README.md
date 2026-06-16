@@ -596,7 +596,3 @@ Banks      → that SMS "suspicious activity detected"
 ```
 
 ---
-
-## Resume Description
-
-> Built a production-grade real-time fraud detection platform using Node.js, TypeScript, Apache Kafka, Redis, PostgreSQL, and Google Gemini AI. Implemented event-driven microservices with rule-based fraud scoring (velocity checks, geo anomaly, device fingerprinting) combined with AI inference, achieving sub-500ms detection latency. System includes automated email alerting, analytics APIs, and full Docker containerization.
