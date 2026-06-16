@@ -10,7 +10,7 @@
 
 import redis from "../redis";
 
-export default async function deviceAnomaly( userId: string, deviceId: string): Promise<number> {
+export default async function deviceAnomalyRule(userId: string, deviceId: string): Promise<number> {
   
     const device = await redis.get(`device:${userId}`);
    
