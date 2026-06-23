@@ -2,18 +2,24 @@
   "name": "alert-service",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "@types/kafkajs": "^1.8.2",
-    "@types/nodemailer": "^8.0.1",
-    "dotenv": "^17.4.2",
-    "nodemailer": "^9.0.0"
+    "dotenv": "^16.3.1",
+    "kafkajs": "^2.2.4",
+    "nodemailer": "^6.9.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/nodemailer": "^6.4.14",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.2"
   }
 }

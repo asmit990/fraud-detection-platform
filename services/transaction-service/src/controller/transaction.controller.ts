@@ -122,3 +122,19 @@ export async function getTransactionById(
     res.status(500).json({ message: "Internal server error" });
   }
 }
+
+// GET /transactions/alerts
+export async function getAlerts(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM alerts ORDER BY created_at DESC LIMIT 100`
+    );
+    res.json({ alerts: result.rows });
+  } catch (err) {
+    console.error("getAlerts error:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}

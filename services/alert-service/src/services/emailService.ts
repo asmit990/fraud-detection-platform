@@ -1,10 +1,7 @@
-import nodemailer from "nodemailer";
-import dotenv from "dotenv";
+import "dotenv/config";   
+import * as nodemailer from "nodemailer";
 import { Alertmessage } from "../types";
 
-dotenv.config();
-
-// Create transporter once
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -13,14 +10,15 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+
 export async function sendFraudEmail(alert: Alertmessage): Promise<void> {
   try {
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: process.env.EMAIL_TO,
-      subject: "🚨 Fraud Alert - High Risk Transaction Detected",
+      subject: " Fraud Alert - High Risk Transaction Detected",
       html: `
-        <h2>🚨 Fraud Alert</h2>
+        <h2> Fraud Alert</h2>
         <p><strong>User ID:</strong> ${alert.user_id}</p>
         <p><strong>Amount:</strong> ${alert.amount}</p>
         <p><strong>Country:</strong> ${alert.country}</p>
@@ -30,12 +28,8 @@ export async function sendFraudEmail(alert: Alertmessage): Promise<void> {
       `,
     });
 
-    console.log(
-      `Email sent for transaction ${alert.transaction_id}`
-    );
+    console.log(`Email sent for transaction ${alert.transaction_id}`);
   } catch (error) {
     console.error("Email failed:", error);
-
-    // no crash
   }
 }

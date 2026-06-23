@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import pool from "./database/db";
 import analyticsRoutes from "./routes/analytics.routes";
+import { authMiddleware } from "./middleware/authMiddleware";
 
 const app = express();
 
@@ -13,7 +14,8 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok hai darling" });
 });
 
-app.use("/api/analytics", analyticsRoutes);
+// All /api/* routes require a valid JWT
+app.use("/api/analytics", authMiddleware, analyticsRoutes);
 
 const PORT = process.env.PORT ?? 3003;
 

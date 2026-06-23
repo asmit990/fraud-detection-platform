@@ -1,8 +1,8 @@
-import dotenv from "dotenv";
+import "dotenv/config"
 import { connectConsumer, startConsumer } from "./kafka";
 import { alertHandler } from "./services/alertHandler";
 
-dotenv.config();
+
 
 async function start(): Promise<void> {
   try {
