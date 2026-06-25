@@ -17,6 +17,7 @@
     "jsonwebtoken": "^9.0.2",
     "kafkajs": "^2.2.4",
     "pg": "^8.11.3",
+    "razorpay": "^2.9.6",
     "uuid": "^9.0.0"
   },
   "devDependencies": {

@@ -5,10 +5,16 @@ import pool, { initDb } from "./db";
 import transactionRoutes from "./routes/transaction.routes";
 import { connectProducer } from "./kafka";
 import { authMiddleware } from "./middleware/authMiddleware";
-
+import webhookRouter from './routes/webhook.routes'
 const app = express();
-app.use(express.json());
+
+
+
 app.use(cors());
+
+app.use('/webhook', webhookRouter)
+
+app.use(express.json())
 
 const PORT = process.env.PORT ?? 3001;
 
@@ -17,8 +23,12 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-// All /api/* routes require a valid JWT
+
+
 app.use("/api/transactions", authMiddleware, transactionRoutes);
+
+
+
 
 async function start() {
 try {
