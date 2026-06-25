@@ -25,17 +25,30 @@ export async function fraudEngine(transaction: Transaction): Promise<void> {
     nightActivityRule(transaction)
   ]);
 
-  // rule score
+
   const ruleScore = largeAmountScore + velocityScore + geoScore + deviceScore + nightScore;
 
-  // call gemini
-  const mlResult = await callGemini(transaction);
-  const mlScore = mlResult.fraud_probability * 100;
+  
+  let mlResult = { 
+    fraud_probability: 0, 
+    reason: "ML unavailable" 
+     }
 
-  // combine rule + ml
+  
+
+   try {
+    mlResult = await callGemini(transaction)
+   } catch(err) {
+    console.log('Gemini failed — using rules only')
+    // mlResult default rahega  0 prolly mei
+   }
+  
+   const mlScore = mlResult.fraud_probability * 100;
+
+
   const finalScore = Math.round((ruleScore * 0.4) + (mlScore * 0.6));
 
-  // classify
+  
   const fraudStatus =
     finalScore >= 61 ? "HIGH"   :
     finalScore >= 31 ? "MEDIUM" : "LOW";
@@ -47,7 +60,7 @@ export async function fraudEngine(transaction: Transaction): Promise<void> {
   if (geoScore > 0)         reasons.push("geo anomaly");
   if (deviceScore > 0)      reasons.push("unknown device");
   if (nightScore > 0)       reasons.push("night activity");
-  if (mlResult.reason !== "ML unavailable") reasons.push(`ML: ${mlResult.reason}`);
+  if (mlResult.reason !== "AI MODEL IS unavailable") reasons.push(`ML: ${mlResult.reason}`);
 
   // update postgres
   await pool.query(
