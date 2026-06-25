@@ -10,7 +10,7 @@ import  { callGemini } from "../services/geminiService";
 
 export async function fraudEngine(transaction: Transaction): Promise<void> {
 
-  // run all 5 rules in parallel
+
   const [
     largeAmountScore,
     velocityScore,
@@ -40,7 +40,7 @@ export async function fraudEngine(transaction: Transaction): Promise<void> {
     mlResult = await callGemini(transaction)
    } catch(err) {
     console.log('Gemini failed — using rules only')
-    // mlResult default rahega  0 prolly mei
+
    }
   
    const mlScore = mlResult.fraud_probability * 100;
