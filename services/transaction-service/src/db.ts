@@ -33,6 +33,18 @@ export async function initDb(): Promise<void> {
       created_at     TIMESTAMPTZ DEFAULT NOW()
     );
 
+
+
+    -- init.sql mein fraud_status check update karo
+ALTER TABLE transactions 
+DROP CONSTRAINT IF EXISTS transactions_fraud_status_check;
+
+ALTER TABLE transactions 
+ADD CONSTRAINT transactions_fraud_status_check 
+CHECK (fraud_status IN ('PENDING', 'LOW', 'MEDIUM', 'HIGH', 'BLOCKED'));
+
+
+
     -- indexes
     CREATE INDEX IF NOT EXISTS idx_transactions_user_id
       ON transactions(user_id);
@@ -42,6 +54,9 @@ export async function initDb(): Promise<void> {
       ON transactions(fraud_status);
     CREATE INDEX IF NOT EXISTS idx_alerts_transaction_id
       ON alerts(transaction_id);
+
+
+
   `);
 }
 

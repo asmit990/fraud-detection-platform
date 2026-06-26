@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import pool, { initDb } from "./db";
+import blockRouter from './routes/block.routes'
 import transactionRoutes from "./routes/transaction.routes";
 import { connectProducer } from "./kafka";
 import { authMiddleware } from "./middleware/authMiddleware";
@@ -27,7 +28,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/transactions", authMiddleware, transactionRoutes);
 
-
+app.use('/api/transactions', authMiddleware, blockRouter)
 
 
 async function start() {
