@@ -9,6 +9,8 @@ export interface Transaction {
   risk_score: number;
   fraud_status: string;
   created_at: string;
+  ip?: string;
+  merchant_category?:string;
 }
 
 export interface FraudResult {
@@ -16,4 +18,14 @@ export interface FraudResult {
   finalScore: number;
   status: "LOW" | "MEDIUM" | "HIGH";
   reasons: string[];
+}
+
+
+
+export interface DeviceFingerprint {
+  deviceId: string;
+  userAgent: string;
+  ip: string;
+  screen?: string;
+  language?: string;
 }
