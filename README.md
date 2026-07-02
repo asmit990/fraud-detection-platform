@@ -349,7 +349,7 @@ Postman          → postman.com (for testing)
 ### Step 1 — Clone and Start Infrastructure
 
 ```bash
-git clone https://github.com/yourusername/fraud-platform.git
+git clone https://github.com/asmit990/fraud-detection-platform.git
 cd fraud-platform
 docker-compose up -d
 docker ps
