@@ -90,7 +90,7 @@ export async function fraudEngine(transaction: Transaction): Promise<void> {
 
  
   if(fraudStatus === 'HIGH') {
-    await createAlert(transaction, reasons.join(", "))  // ← ye bhi tha!
+    await createAlert(transaction, reasons, finalScore)
     await recordFailedAttempt(transaction.user_id)
   } else {
     await resetFailedAttempts(transaction.user_id)

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import pool from "./db";
 import redis from "./redis";
-import { connectConsumer, startConsumer } from "./kafka";
+import { connectConsumer, connectProducer, startConsumer } from "./kafka";
 import { fraudEngine } from "./engine/fraudEngine";
 import { Transaction } from "./types";
 
@@ -13,6 +13,7 @@ async function start(): Promise<void> {
     await redis.ping();
     console.log("Redis connected");
 
+    await connectProducer();
     await connectConsumer();
 
     // pass fraudEngine as the handler
