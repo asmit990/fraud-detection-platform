@@ -1,92 +1,80 @@
-name: CI Pipeline
+name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
 
 jobs:
-  test-transaction-service:
+  test-and-build:
+    name: ${{ matrix.package.name }}
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - name: auth-service
+            path: services/auth-service
+            test: true
+          - name: transaction-service
+            path: services/transaction-service
+            test: true
+          - name: fraud-service
+            path: services/fraud-service
+            test: true
+          - name: alert-service
+            path: services/alert-service
+            test: true
+          - name: analytics-service
+            path: services/analytics-service
+            test: false
+          - name: frontend
+            path: frontend
+            test: false
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.package.path }}
+
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install
-        run: npm install
-        working-directory: services/transaction-service
-      - name: Test
+          cache: npm
+          cache-dependency-path: ${{ matrix.package.path }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        if: matrix.package.test
         run: npm test
-        working-directory: services/transaction-service
+
       - name: Build
         run: npm run build
-        working-directory: services/transaction-service
 
-  test-fraud-service:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 20
-      - name: Install
-        run: npm install
-        working-directory: services/fraud-service
-      - name: Test
-        run: npm test
-        working-directory: services/fraud-service
-      - name: Build
-        run: npm run build
-        working-directory: services/fraud-service
-
-  test-alert-service:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 20
-      - name: Install
-        run: npm install
-        working-directory: services/alert-service
-      - name: Test
-        run: npm test
-        working-directory: services/alert-service
-      - name: Build
-        run: npm run build
-        working-directory: services/alert-service
-
-  test-analytics-service:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 20
-      - name: Install
-        run: npm install
-        working-directory: services/analytics-service
-      - name: Test
-        run: npm test
-        working-directory: services/analytics-service
-      - name: Build
-        run: npm run build
-        working-directory: services/analytics-service
-
-  # Sab pass hone ke baad deploy
   deploy:
-    needs: [
-      test-transaction-service,
-      test-fraud-service,
-      test-alert-service,
-      test-analytics-service
-    ]
+    name: Deploy
+    needs: test-and-build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'  # sirf main pe deploy
-    
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Deploy
-        run: echo "All tests passed — Deploy here!"
+        run: echo "All checks passed. Add deployment steps here."
