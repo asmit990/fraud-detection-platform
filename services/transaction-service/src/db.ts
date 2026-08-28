@@ -33,7 +33,15 @@ export async function initDb(): Promise<void> {
       created_at     TIMESTAMPTZ DEFAULT NOW()
     );
 
-
+   CREATE TABLE IF NOT EXISTS outbox_events (
+   id        UUID       PRIMARY KEY DEFAULT gen_random_uuid(),
+   aggregate_id UUID NOT NULL,
+   event_type VARCHAR(100) NOT NULL,
+   payload JSONB NOT NULL,
+   metadata JSONB DEFAULT '{}',
+   created_at TIMESTAMPTZ DEFAULT NOW(),
+   published_at TIMESTAMPTZ ;
+   )
 
     -- init.sql mein fraud_status check update karo
 ALTER TABLE transactions 
@@ -43,9 +51,14 @@ ALTER TABLE transactions
 ADD CONSTRAINT transactions_fraud_status_check 
 CHECK (fraud_status IN ('PENDING', 'LOW', 'MEDIUM', 'HIGH', 'BLOCKED'));
 
+ALTER TABLE transactions 
+ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(255) UNIQUE;
 
-
-    -- indexes
+   
+    CREATE INDEX IF NOT EXISTS idx_transactuond_idempotency_key
+    ON transactions(idempotency_key);
+    WHERE idempotency_key IS NOT NULL;
+    
     CREATE INDEX IF NOT EXISTS idx_transactions_user_id
       ON transactions(user_id);
     CREATE INDEX IF NOT EXISTS idx_transactions_timestamp
@@ -54,7 +67,9 @@ CHECK (fraud_status IN ('PENDING', 'LOW', 'MEDIUM', 'HIGH', 'BLOCKED'));
       ON transactions(fraud_status);
     CREATE INDEX IF NOT EXISTS idx_alerts_transaction_id
       ON alerts(transaction_id);
-
+    CREATE INDEX  IF NOT EXISTS idx_outbox_unpublished
+      ON outbox_events (created_at)
+      WHERE published_at IS NULL;
 
 
   `);
