@@ -28,4 +28,5 @@ export interface CreateTransactionBody {
   currency?: string;
   country: string;
   device_id: string;
+  outboxEvents: string;
 }

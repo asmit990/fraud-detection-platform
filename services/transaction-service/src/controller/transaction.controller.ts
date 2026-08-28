@@ -3,12 +3,15 @@ import pool from "../db";
 import { connectProducer, publishMessage } from "../kafka";
 import { Transaction, CreateTransactionBody } from "../types";
 
-// POST /transactions
+
 export async function createTransaction(
   req: Request<{}, {}, CreateTransactionBody>,
   res: Response
 ): Promise<void> {
   const { user_id, amount, currency = "INR", country, device_id } = req.body;
+  const idepkey = req.header("Idempotency-Key");
+
+
 
   if (!user_id || amount === undefined || !country || !device_id) {
     res.status(400).json({ message: "Missing required fields: user_id, amount, country, device_id" });
@@ -19,17 +22,45 @@ export async function createTransaction(
     res.status(400).json({ message: "amount must be a positive number" });
     return;
   }
-
+  const client = await pool.connect();
   try {
-    const result = await pool.query<Transaction>(
+
+
+    await client.query("BEGIN");
+
+    if (idepkey) {
+      const existing = await client.query<Transaction>(
+        `SELECT * FROM transactions WHERE idempotency_key = $1`,
+        [idepkey]
+      )
+      if (existing.rowCount! > 0) {
+        res.status(400).json({
+          message: "Transaction already exists",
+          transaction: existing.rows[0]
+        });
+        return;
+      }
+    }
+    const txnResult = await client.query<Transaction>(
       `INSERT INTO transactions (user_id, amount, currency, country, device_id)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
       [user_id, amount, currency, country, device_id]
     );
 
-    const transaction = result.rows[0];
+    const transaction = txnResult.rows[0];
 
+
+    await client.query(
+      `INSERT INTO outbox_events(aggregate_id, event_type, payload)
+      VALUES ($1, $2, $3)`,
+      [transaction.id, "transaction.created", JSON.stringify(transaction)]
+    )
+
+
+
+    await client.query("COMMIT");
+    res.status(201).json({ transaction });
 
     try {
       await publishMessage(process.env.KAFKA_TOPIC ?? "transactions", transaction);
@@ -39,9 +70,25 @@ export async function createTransaction(
     }
 
     res.status(201).json({ transaction });
-  } catch (err) {
-    console.error("createTransaction error:", err);
-    res.status(500).json({ message: "Internal server error" });
+  } catch (err: any) {
+    await client.query("ROLLBACK");
+    if (err.code === "23505") {
+      const existing = await client.query<Transaction>(
+        `SELECT * FROM transactions WHERE idempotency_key = $1`,
+        [idepkey]
+      )
+      if (existing.rowCount! > 0) {
+        res.status(400).json({
+          message: "Transaction already exists",
+          transaction: existing.rows[0]
+        });
+        return;
+      }
+      console.error("createTransaction error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  } finally {
+    client.release();
   }
 }
 
