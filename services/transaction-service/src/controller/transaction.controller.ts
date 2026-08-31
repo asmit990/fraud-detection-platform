@@ -1,17 +1,14 @@
 import { Request, Response } from "express";
 import pool from "../db";
-import { connectProducer, publishMessage } from "../kafka";
+import { publishMessage } from "../kafka";
 import { Transaction, CreateTransactionBody } from "../types";
-
 
 export async function createTransaction(
   req: Request<{}, {}, CreateTransactionBody>,
   res: Response
 ): Promise<void> {
   const { user_id, amount, currency = "INR", country, device_id } = req.body;
-  const idepkey = req.header("Idempotency-Key");
-
-
+  const idepkey = req.header("Idempotency-Key") || req.header("idempotency-key");
 
   if (!user_id || amount === undefined || !country || !device_id) {
     res.status(400).json({ message: "Missing required fields: user_id, amount, country, device_id" });
@@ -22,71 +19,58 @@ export async function createTransaction(
     res.status(400).json({ message: "amount must be a positive number" });
     return;
   }
+
   const client = await pool.connect();
   try {
-
-
     await client.query("BEGIN");
 
-    if (idepkey) {
-      const existing = await client.query<Transaction>(
-        `SELECT * FROM transactions WHERE idempotency_key = $1`,
-        [idepkey]
-      )
-      if (existing.rowCount! > 0) {
-        res.status(400).json({
-          message: "Transaction already exists",
-          transaction: existing.rows[0]
-        });
-        return;
-      }
-    }
+    // Insert transaction with idempotency key
     const txnResult = await client.query<Transaction>(
-      `INSERT INTO transactions (user_id, amount, currency, country, device_id)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO transactions (user_id, amount, currency, country, device_id, idempotency_key)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [user_id, amount, currency, country, device_id]
+      [user_id, amount, currency, country, device_id, idepkey?.trim() ?? null]
     );
 
     const transaction = txnResult.rows[0];
 
-
+    // Transactional Outbox: Insert event atomically
     await client.query(
-      `INSERT INTO outbox_events(aggregate_id, event_type, payload)
-      VALUES ($1, $2, $3)`,
+      `INSERT INTO outbox_events (aggregate_id, event_type, payload)
+       VALUES ($1, $2, $3)`,
       [transaction.id, "transaction.created", JSON.stringify(transaction)]
-    )
-
-
+    );
 
     await client.query("COMMIT");
-    res.status(201).json({ transaction });
 
+    // Optional direct Kafka publish for immediate processing (relay acts as guarantee)
     try {
       await publishMessage(process.env.KAFKA_TOPIC ?? "transactions", transaction);
     } catch (kafkaErr) {
-
-      console.error("Kafka publish failed:", kafkaErr);
+      console.warn("Direct Kafka publish failed, outbox relay will deliver:", kafkaErr);
     }
 
     res.status(201).json({ transaction });
   } catch (err: any) {
     await client.query("ROLLBACK");
-    if (err.code === "23505") {
-      const existing = await client.query<Transaction>(
+
+    // Handle database unique constraint conflict if idempotency_key was duplicated
+    if (err.code === "23505" && idepkey) {
+      const existing = await pool.query<Transaction>(
         `SELECT * FROM transactions WHERE idempotency_key = $1`,
-        [idepkey]
-      )
-      if (existing.rowCount! > 0) {
-        res.status(400).json({
-          message: "Transaction already exists",
-          transaction: existing.rows[0]
+        [idepkey.trim()]
+      );
+      if (existing.rowCount && existing.rowCount > 0) {
+        res.status(200).json({
+          message: "Transaction already processed",
+          transaction: existing.rows[0],
         });
         return;
       }
-      console.error("createTransaction error:", err);
-      res.status(500).json({ message: "Internal server error" });
     }
+
+    console.error("createTransaction error:", err);
+    res.status(500).json({ message: "Internal server error" });
   } finally {
     client.release();
   }
