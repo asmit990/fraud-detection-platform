@@ -8,7 +8,8 @@ export interface Transaction {
   device_id: string;
   timestamp: Date;
   risk_score: number;
-  fraud_status: "PENDING" | "FRAUD" | "LEGIT";
+  fraud_status: "PENDING" | "LOW" | "MEDIUM" | "HIGH" | "BLOCKED" | "FRAUD" | "LEGIT";
+  idempotency_key?: string | null;
   created_at: Date;
 }
 
@@ -28,5 +29,17 @@ export interface CreateTransactionBody {
   currency?: string;
   country: string;
   device_id: string;
-  outboxEvents: string;
+}
+
+// Idempotency Key record
+export interface IdempotencyKeyRecord {
+  key: string;
+  user_id?: string;
+  request_path: string;
+  request_hash: string;
+  status: "PROCESSING" | "COMPLETED" | "FAILED";
+  response_code?: number;
+  response_body?: any;
+  created_at: Date;
+  expires_at: Date;
 }
