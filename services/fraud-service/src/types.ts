@@ -10,7 +10,7 @@ export interface Transaction {
   fraud_status: string;
   created_at: string;
   ip?: string;
-  merchant_category?:string;
+  merchant_category?: string;
 }
 
 export interface FraudResult {
@@ -28,4 +28,16 @@ export interface DeviceFingerprint {
   ip: string;
   screen?: string;
   language?: string;
+}
+
+
+
+
+export interface DlqEnvelope {
+  original_payload: string | null;
+  error_message: string;
+  error_stack?: string;
+  retry_count: number;
+  service: "fraud-services";
+  failed_at: string;
 }

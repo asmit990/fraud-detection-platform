@@ -26,6 +26,10 @@ export async function initDb(): Promise<void> {
       created_at      TIMESTAMPTZ  DEFAULT NOW()
     );
 
+    -- Ensure idempotency_key column exists if table was created in an earlier migration
+    ALTER TABLE transactions 
+      ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(255) UNIQUE;
+
     -- alerts table
     CREATE TABLE IF NOT EXISTS alerts (
       id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),

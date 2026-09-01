@@ -16,9 +16,12 @@ async function start(): Promise<void> {
     await connectProducer();
     await connectConsumer();
 
-    // pass fraudEngine as the handler
+
     await startConsumer(async (raw: string) => {
       const transaction = JSON.parse(raw) as Transaction;
+      if (!transaction.id || !transaction.user_id) {
+        throw new Error("malformed transaction: missing id")
+      }
       await fraudEngine(transaction);
     });
 

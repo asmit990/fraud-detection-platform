@@ -1,6 +1,6 @@
 # Real-Time Fraud Detection Platform
 
-A production-grade, event-driven fraud detection and transaction processing system built with TypeScript microservices. Detects fraudulent transactions in milliseconds using a combination of deterministic rule-based scoring, Redis-backed velocity & anomaly checks, and Google Gemini AI, featuring **Stripe/IETF-standard Idempotency** and the **Transactional Outbox Pattern**.
+A production-grade, event-driven fraud detection and transaction processing system built with TypeScript microservices. Detects fraudulent transactions in milliseconds using a combination of deterministic rule-based scoring, Redis-backed velocity & anomaly checks, and Google Gemini AI, featuring **Stripe/IETF-standard Idempotency**, the **Transactional Outbox Pattern**, and a **Dead Letter Queue (DLQ) Failure Recovery Pipeline**.
 
 ---
 
@@ -12,11 +12,12 @@ Every time a transaction comes in, the system:
 2. **Enforces Authentication & Safety**: Validates JWT bearer tokens and sanitizes request parameters.
 3. **Transactional Outbox Persistence**: Atomically writes transactions and domain events into PostgreSQL in a single database transaction.
 4. **Reliable Event Streaming**: Asynchronously relays events to Apache Kafka with zero lost messages even during broker outages.
-5. **Multi-Rule Evaluation**: Runs 5 fraud detection rules in parallel using Redis for velocity counters, device fingerprints, and geolocation history.
-6. **Gemini AI Risk Scoring**: Prompts Google Gemini ML for explainable fraud probability and reasoning.
-7. **Combined Risk Engine**: Blends rule-based score (40%) and AI score (60%) into a final risk rating (LOW, MEDIUM, HIGH).
-8. **Automated Alerting & Action**: Publishes high-risk alerts to Kafka, triggers automated email dispatch via Gmail SMTP, and supports analyst blocking workflows.
-9. **Real-time Analytics**: Provides aggregations, 7-day fraud trends, and regional breakdown APIs for monitoring.
+5. **DLQ & Poison Message Isolation**: Automatically retries transient failures 3 times with incremental backoff; routes unrecoverable or malformed payloads to `transactions.dlq` without stalling Kafka partitions.
+6. **Multi-Rule Evaluation**: Runs 8 fraud detection rules in parallel using Redis for velocity counters, device fingerprints, geolocation history, IP reputation, and merchant profiling.
+7. **Gemini AI Risk Scoring**: Prompts Google Gemini ML for explainable fraud probability and reasoning (with 3.5s timeout & fallback).
+8. **Combined Risk Engine**: Blends rule-based score (40%) and AI score (60%) into a final risk rating (LOW, MEDIUM, HIGH).
+9. **Automated Alerting & Action**: Publishes high-risk alerts to Kafka, triggers automated email dispatch via Gmail SMTP, and supports analyst blocking workflows.
+10. **Real-time Analytics**: Provides aggregations, 7-day fraud trends, and regional breakdown APIs for monitoring.
 
 ---
 
@@ -43,54 +44,73 @@ CLIENT / POSTMAN
 ┌─────────────────────────────────────────────────────────────────┐
 │                        APACHE KAFKA                             │
 │                                                                 │
-│   topic: transactions  (Partitioned by transaction_id)          │
-│   topic: alerts        (Carries HIGH-risk alert notifications)  │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │
-                                 │ consumed by fraud-service
-                                 ▼
+│   topic: transactions      (Partitioned by transaction_id)      │
+│   topic: transactions.dlq  (Dead Letter Queue for failures)     │
+│   topic: alerts            (Carries HIGH-risk alerts)           │
+└───────────────┬───────────────────────────────┬─────────────────┘
+                │                               │
+                │ consumed by fraud-service     │ unrecoverable failures
+                ▼                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        FRAUD SERVICE                            │
+│   ├── Consumer Deduplication (Redis SET NX)                     │
+│   ├── 3-Attempt Retry Loop with Incremental Backoff             │
+│   ├── DLQ Error Envelope Dispatch (transactions.dlq)            │
+│   ├── 8 Parallel Deterministic Rules (Redis Cache)              │
+│   └── Gemini 1.5 Flash AI (3.5s Timeout + Safe Fallback)        │
+└───────────────┬─────────────────────────────────────────────────┘
+                │
+                │ if HIGH → publishes to topic: "alerts"
+                ▼
 ┌──────────────────────────┐     ┌────────────────────────────────┐
-│     FRAUD SERVICE        │     │             REDIS              │
-│     Node.js + TS         │◄───►│                                │
-│                          │     │  velocity counter (10m TTL)    │
-│  runs 5 rules:           │     │  geo history (last country)    │
-│  ┌────────────────────┐  │     │  known device sets             │
-│  │ large amount  +40  │  │     └────────────────────────────────┘
-│  │ velocity      +30  │  │
-│  │ geo anomaly   +30  │  │     ┌────────────────────────────────┐
-│  │ new device    +25  │  │◄───►│         GEMINI AI API          │
-│  │ night 1-5am   +20  │  │     │         (free tier)            │
-│  └────────────────────┘  │     │                                │
-│                          │     │  returns:                      │
-│  final score =           │     │  fraud_probability             │
-│  rules × 0.4             │     │  + explanation reason          │
-│  + ML × 0.6              │     └────────────────────────────────┘
-│                          │
-│  0-30  → LOW             │────► updates POSTGRES
-│  31-60 → MEDIUM          │      risk_score
-│  61+   → HIGH            │      fraud_status
-└────────────┬─────────────┘
-             │
-             │ if HIGH → publishes to topic: "alerts"
-             ▼
-┌──────────────────────────┐
-│      ALERT SERVICE       │
-│      Node.js + TS        │
-│                          │
-│   consumes alerts topic  │
-│   sends email via Gmail  │
-│   nodemailer + SMTP      │
-└──────────────────────────┘
+│      ALERT SERVICE       │     │       ANALYTICS SERVICE        │  port 3003
+│      Node.js + TS        │     │       Node.js + Express        │
+│                          │     │                                │
+│   consumes alerts topic  │     │  GET /api/analytics/summary    │
+│   sends email via Gmail  │     │  GET /api/analytics/trends     │
+│   nodemailer + SMTP      │     │  GET /api/analytics/countries  │
+└──────────────────────────┘     └────────────────────────────────┘
+```
 
+---
 
-┌──────────────────────────┐
-│    ANALYTICS SERVICE     │  port 3003
-│    Node.js + Express     │
-│                          │
-│  GET /api/analytics/summary   ──► total txns, fraud count, avg risk
-│  GET /api/analytics/trends    ──► 7-day fraud trend
-│  GET /api/analytics/countries ──► top fraud countries
-└───────────────────────────────┘
+## Dead Letter Queue (DLQ) & Failure Recovery
+
+In high-throughput event streaming, poison messages (corrupted JSON, missing schemas, unexpected runtime exceptions) can crash consumers and block partition offsets indefinitely. 
+
+To eliminate single-point-of-failure bottlenecks:
+
+```
+[Kafka Event: "transactions"] 
+              │
+              ▼
+    [Consumer Worker] ──► Try Attempt 1 ──► (Fails)
+              │
+              ▼ Wait 200ms
+    [Consumer Worker] ──► Try Attempt 2 ──► (Fails)
+              │
+              ▼ Wait 400ms
+    [Consumer Worker] ──► Try Attempt 3 ──► (Fails)
+              │
+              ▼ (Exhausted Retries)
+    [Route to DLQ] ──► Topic: "transactions.dlq"
+              │
+              ▼
+   [Acknowledge Offset & Unblock Partition]
+```
+
+### DLQ Diagnostic Envelope Schema
+Messages forwarded to `transactions.dlq` contain full diagnostic metadata:
+
+```json
+{
+  "original_payload": "{\"bad_json\": ...}",
+  "error_message": "malformed transaction: missing id or user_id",
+  "error_stack": "Error: malformed transaction...\n    at ...",
+  "retry_count": 3,
+  "service": "fraud-service",
+  "failed_at": "2026-09-01T06:55:00.000Z"
+}
 ```
 
 ---
@@ -125,7 +145,7 @@ Replay Cache   Return 409                         Save Response & Set COMPLETED
 1. **Request Fingerprinting (SHA-256)**: Creates a deterministic hash of `METHOD:PATH:BODY`.
 2. **Tamper Protection (`422 Unprocessable Entity`)**: Reusing an existing key with altered parameters (e.g. changing amount or user) is rejected immediately.
 3. **Concurrency Lock (`409 Conflict`)**: Simultaneous requests with the same key receive `409 Conflict` with `Retry-After: 2`, preventing race conditions.
-4. **Instant Response Replay (`Idempotency-Replay: true`)**: Replayed requests return in `< 2ms` directly from the cached response payload without hitting business logic or downstream Kafka.
+4. **Instant Response Replay (`Idempotency-Replay: true`)**: Replayed requests return in `< 20ms` directly from the cached response payload without hitting business logic or downstream Kafka.
 
 ---
 
@@ -140,8 +160,8 @@ To prevent distributed data inconsistencies where a database write succeeds but 
    INSERT INTO outbox_events (aggregate_id, event_type, payload) VALUES (...);
    COMMIT;
    ```
-2. The background **Outbox Relay** (`outboxRelay.ts`) continuously polls unpublished events with `FOR UPDATE SKIP LOCKED`, batches them to Kafka, and marks them `published_at = NOW()`.
-3. Guarantees **At-Least-Once Delivery** and prevents hanging API requests during message broker lag.
+2. The background **Outbox Relay** (`outboxRelay.ts`) continuously polls unpublished events with `FOR UPDATE SKIP LOCKED` (100ms interval), batches them to Kafka, and marks them `published_at = NOW()`.
+3. Guarantees **At-Least-Once Delivery** with sub-second end-to-end pipeline latency (~0.9s).
 
 ---
 
@@ -149,23 +169,29 @@ To prevent distributed data inconsistencies where a database write succeeds but 
 
 ```
 Rule 1 — Large Amount (+40 points)
-  if transaction.amount > 10,000
-  Large transactions inherently carry higher risk.
+  if transaction.amount > 10,000.
 
 Rule 2 — Velocity (+30 points)
-  if user makes > 5 transactions in 10 minutes
-  Tracked in Redis with atomic INCR and 10-minute auto-expiring TTL.
+  if user makes > 5 transactions in 10 minutes (Redis atomic INCR + 10m TTL).
 
 Rule 3 — Geo Anomaly (+30 points)
-  if transaction country != user's last known country
-  Compares against Redis user geo history.
+  if transaction country != user's last known country (Redis geo history).
 
 Rule 4 — Device Anomaly (+25 points)
-  if device_id has never been seen before for this user
-  Tracked in Redis as a set of authorized devices per user.
+  if device_id has never been seen before for this user (Redis set).
 
 Rule 5 — Night Activity (+20 points)
   if transaction occurs between 1:00 AM and 5:00 AM local time.
+
+Rule 6 — IP Reputation (+35 points)
+  if IP is hardcoded blacklisted or shared across > 10 distinct accounts.
+
+Rule 7 — Multiple Failed Attempts (+30 points)
+  if user has >= 5 consecutive high-risk / failed payment attempts.
+
+Rule 8 — Unusual Merchant Category (+25 / +15 points)
+  +25 for high-risk categories (crypto, gambling, adult, firearms)
+  +15 if category is new for an established user profile.
 
 Gemini AI Inference (Weighted at 60%)
   Sends transaction features and context to Google Gemini ML.
@@ -192,6 +218,8 @@ Manual Block    →   BLOCKED   Transaction frozen by analyst
 fraud-platform/
 ├── docker-compose.yml              # PostgreSQL, Redis, Kafka, Zookeeper, Kafka UI
 ├── init.sql                        # Database bootstrap schemas
+├── scripts/
+│   └── simulate.ts                 # End-to-end live simulator script
 │
 └── services/
     ├── transaction-service/        # Ingestion API, Idempotency & Outbox Relay
@@ -207,23 +235,20 @@ fraud-platform/
     │       ├── controller/
     │       │   ├── transaction.controller.ts # Transaction CRUD & Outbox logic
     │       │   └── block.controller.ts       # Analyst freeze/block actions
-    │       ├── routes/
-    │       │   ├── transaction.routes.ts     # Protected transaction routes
-    │       │   └── block.routes.ts           # Block/unblock endpoints
-    │       └── __tests__/
-    │           ├── idempotency.test.ts       # Idempotency test suite
-    │           └── types.test.ts             # Type assertion tests
+    │       └── routes/
+    │           ├── transaction.routes.ts     # Protected transaction routes
+    │           └── block.routes.ts           # Block/unblock endpoints
     │
     ├── fraud-service/              # Core Risk Engine & AI Inference
     │   └── src/
     │       ├── index.ts            # Kafka consumer orchestrator
-    │       ├── kafka.ts            # Kafka consumer & alert producer
+    │       ├── kafka.ts            # Kafka consumer, DLQ producer & retry loop
     │       ├── redis.ts            # Redis connection & cache helpers
     │       ├── engine/
-    │       │   └── fraudEngine.ts  # Runs rules & combines AI scores
-    │       ├── rules/              # 5 deterministic fraud rules
+    │       │   └── fraudEngine.ts  # Runs 8 rules + AI score blending
+    │       ├── rules/              # 8 deterministic fraud rules
     │       └── services/
-    │           ├── geminiService.ts# Google Gemini AI integration
+    │           ├── geminiService.ts# Google Gemini AI integration (with timeout)
     │           └── alertService.ts # Postgres alert storage
     │
     ├── analytics-service/          # Read-only Analytics & Metrics
@@ -236,54 +261,9 @@ fraud-platform/
         └── src/
             ├── index.ts            # Alert topic consumer
             └── services/
-                ├── emailService.ts # Nodemailer SMTP dispatch
+                ├── emailService.ts # Nodemailer SMTP dispatch (with retry)
                 └── alertHandler.ts # Alert formatting & sending
 ```
-
----
-
-## API Reference
-
-### 1. Transaction Service — `http://localhost:3001`
-
-| Method | Endpoint | Headers | Description |
-|:---|:---|:---|:---|
-| `GET` | `/health` | None | Public health check |
-| `POST` | `/api/transactions` | `Authorization: Bearer <token>`<br>`Idempotency-Key: <UUID>` | Submit transaction with idempotency protection |
-| `GET` | `/api/transactions` | `Authorization: Bearer <token>` | List transactions (supports `user_id`, `fraud_status`, `limit`, `offset`) |
-| `GET` | `/api/transactions/:id`| `Authorization: Bearer <token>` | Get transaction details and associated alerts |
-| `GET` | `/api/transactions/alerts` | `Authorization: Bearer <token>` | Fetch latest fraud alerts |
-| `PATCH`| `/api/transactions/:id/block` | `Authorization: Bearer <token>` | Analyst endpoint to manually block high-risk transaction |
-| `GET` | `/api/transactions/blocked` | `Authorization: Bearer <token>` | List all blocked transactions |
-
-#### `POST /api/transactions` Example Request
-```bash
-curl -X POST http://localhost:3001/api/transactions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <YOUR_JWT_TOKEN>" \
-  -H "Idempotency-Key: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d" \
-  -d '{
-    "user_id": "usr_9981",
-    "amount": 45000,
-    "currency": "INR",
-    "country": "Russia",
-    "device_id": "dev_macbook_pro_01"
-  }'
-```
-
-#### Idempotency Response Headers
-* `Idempotency-Replay: true` — Returned when an identical request is replayed from cache.
-* `Retry-After: 2` — Returned with `409 Conflict` if the key is currently being processed concurrently.
-
----
-
-### 2. Analytics Service — `http://localhost:3003`
-
-| Method | Endpoint | Description |
-|:---|:---|:---|
-| `GET` | `/api/analytics/summary` | Aggregate metrics (total transactions, fraud counts, average risk score) |
-| `GET` | `/api/analytics/trends` | Daily fraud trends over the past 7 days |
-| `GET` | `/api/analytics/countries`| Top 10 countries by fraud activity |
 
 ---
 
@@ -292,79 +272,42 @@ curl -X POST http://localhost:3001/api/transactions \
 ### 1. Start Infrastructure (Docker)
 ```bash
 docker-compose up -d
-docker ps
 ```
 
-Verify the following 5 services are active:
-* `fraud_postgres` (`localhost:5432`)
-* `fraud_redis` (`localhost:6379`)
-* `fraud_kafka` (`localhost:9092`)
-* `fraud_zookeeper` (`localhost:2181`)
-* `fraud_kafka_ui` (`http://localhost:8080`)
-
-### 2. Environment Configuration
-
-Create `.env` in each service directory (see `.env.example` or samples below):
-
-**`services/transaction-service/.env`**
-```env
-PORT=3001
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=fraud_user
-DB_PASSWORD=fraud_pass
-DB_NAME=fraud_db
-KAFKA_BROKER=localhost:9092
-KAFKA_TOPIC=transactions
-JWT_SECRET=your_jwt_secret_key
-```
-
-**`services/fraud-service/.env`**
-```env
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=fraud_user
-DB_PASSWORD=fraud_pass
-DB_NAME=fraud_db
-REDIS_HOST=localhost
-REDIS_PORT=6379
-KAFKA_BROKER=localhost:9092
-KAFKA_TOPIC=transactions
-KAFKA_ALERT_TOPIC=alerts
-KAFKA_GROUP_ID=fraud-service-group
-GEMINI_API_KEY=your_gemini_api_key
-```
-
-### 3. Run Microservices
+### 2. Run All Services
 
 ```bash
 # Terminal 1 — Transaction Service
-cd services/transaction-service && npm install && npm run dev
+cd services/transaction-service && npm run dev
 
 # Terminal 2 — Fraud Service
-cd services/fraud-service && npm install && npm run dev
+cd services/fraud-service && npm run dev
 
 # Terminal 3 — Analytics Service
-cd services/analytics-service && npm install && npm run dev
+cd services/analytics-service && npm run dev
 
 # Terminal 4 — Alert Service
-cd services/alert-service && npm install && npm run dev
+cd services/alert-service && npm run dev
 ```
 
-### 4. Run Test Suites
-
+### 3. Run Automated Tests
 ```bash
-cd services/transaction-service
-npm test
+npm run test:all
+```
+
+### 4. Run Live Simulator
+```bash
+npm run simulate
 ```
 
 ---
 
 ## What Makes This Production-Grade
 
+* **Dead Letter Queue (DLQ) & Isolation**: 3-attempt backoff with unrecoverable poison payload routing to `transactions.dlq`.
 * **Enterprise Idempotency Engine**: Full compliance with Stripe and IETF Draft specs preventing duplicate billing and race conditions.
 * **Transactional Outbox Pattern**: Zero-loss event streaming with decoupled asynchronous Kafka publishing.
-* **Dual-Layer Intelligence**: Deterministic microsecond Redis rule evaluation fused with Google Gemini ML explainable reasoning.
-* **Sub-500ms Detection Latency**: Real-time Kafka stream processing with parallelized rule execution (`Promise.all`).
+* **Dual-Layer Intelligence**: 8 deterministic microsecond Redis rules fused with Google Gemini ML explainable reasoning.
+* **Sub-Second Detection Latency**: Real-time Kafka stream processing with parallelized rule execution (`Promise.all`) in ~0.9s.
 * **Resilient Failure Handling**: Graceful degradation (AI fallback to rules, outbox retry on broker outages, isolated alert dispatch).
-* **Strict Type Safety**: Unified TypeScript interfaces and automated Jest test suites across all services.
+* **Strict Type Safety**: Unified TypeScript interfaces and automated Jest test suites (56 tests) across all services.

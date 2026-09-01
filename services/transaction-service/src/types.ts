@@ -1,4 +1,4 @@
-// Transaction row as stored in Postgres
+
 export interface Transaction {
   id: string;
   user_id: string;
@@ -13,7 +13,8 @@ export interface Transaction {
   created_at: Date;
 }
 
-// Alert row as stored in Postgres
+
+
 export interface Alert {
   id: string;
   transaction_id: string;
@@ -22,7 +23,7 @@ export interface Alert {
   created_at: Date;
 }
 
-// Body expected when creating a transaction
+
 export interface CreateTransactionBody {
   user_id: string;
   amount: number;
@@ -31,7 +32,7 @@ export interface CreateTransactionBody {
   device_id: string;
 }
 
-// Idempotency Key record
+
 export interface IdempotencyKeyRecord {
   key: string;
   user_id?: string;
