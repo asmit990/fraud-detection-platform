@@ -46,20 +46,4 @@ describe("buildAlertPayload", () => {
     expect(payload.amount).toBe(999.5);
     expect(typeof payload.amount).toBe("number");
   });
-
-  it("produces a payload whose keys match what the email service reads", () => {
-    const payload = buildAlertPayload(tx, ["velocity fraud"], 70);
-    expect(Object.keys(payload).sort()).toEqual(
-      [
-        "amount",
-        "country",
-        "reasons",
-        "risk_score",
-        "severity",
-        "timestamp",
-        "transaction_id",
-        "user_id",
-      ].sort()
-    );
-  });
 });

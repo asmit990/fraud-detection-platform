@@ -1,9 +1,10 @@
-import { Kafka, Partitioners } from "kafkajs"  
-import "dotenv/config"; 
+import { Kafka, Partitioners } from "kafkajs"
+import "dotenv/config";
 const kafka = new Kafka({
   clientId: process.env.KAFKA_CLIENT_ID ?? "transaction-service",
   brokers: [process.env.KAFKA_BROKER ?? "localhost:9092"],
 });
+
 
 
 const producer = kafka.producer({
@@ -11,12 +12,14 @@ const producer = kafka.producer({
 });
 
 export async function connectProducer() {
-    await producer.connect()
+  await producer.connect()
 }
 
 
+
+
 export async function publishMessage(topic: string, message: any) {
-     await producer.send({
+  await producer.send({
     topic,
     messages: [
       {
@@ -25,6 +28,13 @@ export async function publishMessage(topic: string, message: any) {
     ],
   });
 }
+
+
+
+
+
+const MAX_RETRIES = 3;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 
 
