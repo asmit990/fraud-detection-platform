@@ -116,7 +116,7 @@ Messages forwarded to `transactions.dlq` contain full diagnostic metadata:
 ---
 ## Workflow of this project
 
-```
+```mermaid
 ---
 config:
   layout: elk
