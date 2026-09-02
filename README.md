@@ -114,7 +114,88 @@ Messages forwarded to `transactions.dlq` contain full diagnostic metadata:
 ```
 
 ---
+## Workflow of this project
 
+```
+---
+config:
+  layout: elk
+---
+flowchart TD
+    Client(["📱 Client / Postman"]) -->|1. POST /api/transactions<br/>Headers: JWT + Idempotency-Key| TS["⚡ Transaction Service (Port 3001)"]
+
+    subgraph TS_BOX ["Transaction Service Pipeline"]
+        TS --> IM{"Idempotency<br/>Middleware"}
+        IM -->|"Cached & Completed"| Replay["Return Cached Response<br/>(Idempotency-Replay: true)"]
+        IM -->|"In-Progress"| Conflict["Return 409 Conflict<br/>(Retry-After: 2)"]
+        IM -->|"Tampered Payload"| Tamper["Return 422 Unprocessable"]
+        IM -->|"Fresh Key (Acquire Lock)"| PG_Atomic[("🐘 PostgreSQL<br/>Atomic Transaction")]
+        
+        PG_Atomic -->|"INSERT"| TxnTable["transactions table"]
+        PG_Atomic -->|"INSERT"| OutboxTable["outbox_events table"]
+        
+        OutboxTable -.->|"Polled every 1s<br/>(FOR UPDATE SKIP LOCKED)"| Relay["🔄 Outbox Relay Worker"]
+    end
+
+    Relay -->|2. Stream Event| KafkaTopic[("📨 Kafka Topic: transactions")]
+
+    KafkaTopic -->|3. Consume Message| FS["🧠 Fraud Service (Engine)"]
+
+    subgraph FS_BOX ["Fraud Service Intelligence Pipeline"]
+        FS --> Dedup{"Consumer Dedup<br/>(Redis SET NX)"}
+        Dedup -->|"Duplicate"| SkipEvent["Ignore Event (Skip)"]
+        Dedup -->|"First Time"| ParallelEval["⚡ Parallel Evaluation (Promise.all)"]
+
+        subgraph RULES ["8 Deterministic Rules"]
+            ParallelEval --> R1["Large Amount (>10k) +40"]
+            ParallelEval --> R2["Velocity (>5/10m) +30"]
+            ParallelEval --> R3["Geo Anomaly (Country) +30"]
+            ParallelEval --> R4["Device Anomaly +25"]
+            ParallelEval --> R5["Night Activity (1-5am) +20"]
+            ParallelEval --> R6["IP Reputation +35"]
+            ParallelEval --> R7["Failed Attempts +30"]
+            ParallelEval --> R8["Unusual Merchant +25"]
+        end
+
+        subgraph AI ["Google Gemini AI"]
+            ParallelEval --> Gemini["🤖 Gemini AI ML Inference<br/>(3.5s Timeout + Fallback)"]
+        end
+
+        RULES --> Combine["Formula: (Rules × 0.4) + (ML × 0.6)"]
+        Gemini --> Combine
+        
+        Combine --> RiskCheck{"Score >= 61?"}
+        RiskCheck -->|"Yes (HIGH)"| TriggerAlert["Create Alert & Record Fail"]
+        RiskCheck -->|"No (LOW/MED)"| ResetFail["Reset Failed Count"]
+    end
+
+    TriggerAlert -->|"UPDATE risk_score & fraud_status"| PG_Atomic
+    TriggerAlert -->|4. Publish Alert| KafkaAlerts[("🚨 Kafka Topic: alerts")]
+
+    KafkaAlerts -->|5. Consume| AS["📧 Alert Service"]
+    AS -->|6. Send Email Notification| SMTP["📬 Gmail SMTP / Fraud Team"]
+
+    PG_Atomic -.->|Read-only Queries| Analytics["📊 Analytics Service (Port 3003)<br/>GET /summary, /trends, /countries"]
+
+    classDef clientStyle stroke:#818cf8,fill:#eef2ff
+    classDef transactionStyle stroke:#2dd4bf,fill:#f0fdfa
+    classDef fraudStyle stroke:#a78bfa,fill:#f5f3ff
+    classDef kafkaStyle stroke:#fb923c,fill:#fff7ed
+    classDef alertStyle stroke:#f87171,fill:#fef2f2
+    classDef dbStyle stroke:#38bdf8,fill:#f0f9ff
+    classDef decisionStyle stroke:#facc15,fill:#fefce8
+    classDef analyticsStyle stroke:#4ade80,fill:#f0fdf4
+
+    class Client clientStyle
+    class TS,Replay,Conflict,Tamper,Relay transactionStyle
+    class FS,Dedup,ParallelEval,Combine,RiskCheck fraudStyle
+    class KafkaTopic,KafkaAlerts kafkaStyle
+    class AS,SMTP alertStyle
+    class PG_Atomic,TxnTable,OutboxTable dbStyle
+    class IM decisionStyle
+    class Analytics analyticsStyle
+
+```
 ## Enterprise Idempotency (Stripe & IETF RFC Standard)
 
 Transactions are protected against network retries, double-clicks, and duplicate requests using an IETF RFC-compliant idempotency engine:
