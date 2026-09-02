@@ -85,7 +85,7 @@ export default function Transactions() {
       {/* Header bar */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Live Transaction Stream</h1>
+          <h1 className="font-instrument text-4xl font-normal text-slate-900 tracking-tight">Live Transaction Stream</h1>
           <p className="text-xs text-slate-500 mt-1">Real-time payment events passing through idempotency filter and rule pipeline</p>
         </div>
         <div className="flex gap-2">

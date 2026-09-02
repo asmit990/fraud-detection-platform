@@ -18,7 +18,7 @@ export default function Settings() {
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold text-slate-900 mb-8 tracking-tight">Safeguards & Profile</h1>
+      <h1 className="font-instrument text-4xl font-normal text-slate-900 mb-8 tracking-tight">Safeguards & Profile</h1>
       
       {/* User profile card */}
       <div className="flex items-center gap-4 p-6 bg-white border border-slate-200 rounded-xl shadow-sm mb-8">

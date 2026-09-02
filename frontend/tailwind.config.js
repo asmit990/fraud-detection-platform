@@ -8,7 +8,10 @@ export default {
       },
       fontFamily: {
         sans: ['"Slabo 13px"', 'serif'],
-        serif: ['"Slabo 13px"', 'serif'],
+        serif: ['"Instrument Serif"', 'serif'],
+        instrument: ['"Instrument Serif"', 'serif'],
+        yellowtail: ['"Yellowtail"', 'cursive'],
+        slabo: ['"Slabo 13px"', 'serif'],
         mono: ['JetBrains Mono', 'Menlo', 'monospace'],
       }
     },

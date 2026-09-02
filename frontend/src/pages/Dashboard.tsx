@@ -35,7 +35,7 @@ export default function Dashboard() {
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Platform Operations</h1>
+          <h1 className="font-instrument text-4xl font-normal text-slate-900 tracking-tight">Platform Operations</h1>
           <p className="text-xs text-slate-500 mt-1">Real-time risk telemetry & live multi-rule transaction evaluation</p>
         </div>
         <button

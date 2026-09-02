@@ -28,12 +28,13 @@ export default function Landing() {
       {/* Hero Section */}
       <main className="max-w-5xl mx-auto px-6 pt-24 pb-20">
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-semibold mb-6">
-            <Zap className="w-3.5 h-3.5" /> Sub-50ms Risk Evaluation Stream
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-sm font-semibold mb-6">
+            <Zap className="w-3.5 h-3.5" />
+            <span className="font-yellowtail text-base tracking-wide">Sub-50ms Risk Evaluation Stream</span>
           </div>
-          <h1 className="text-5xl font-bold tracking-tight text-slate-950 mb-6 leading-tight">
+          <h1 className="font-instrument text-6xl md:text-7xl font-normal tracking-tight text-slate-950 mb-6 leading-[1.08]">
             Real-Time Payment <br />
-            <span className="text-indigo-600">Fraud Prevention</span>
+            <span className="italic text-indigo-600 font-instrument">Fraud Prevention</span>
           </h1>
           <p className="text-lg text-slate-600 mb-8 leading-relaxed max-w-2xl mx-auto">
             Deterministic multi-rule evaluation running parallel in Redis with Google Gemini AI natural language explainability, Stripe-standard idempotency, and Kafka transactional outbox resilience.
