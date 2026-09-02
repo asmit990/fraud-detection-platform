@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-white text-slate-800 antialiased selection:bg-indigo-100 selection:text-indigo-900;
+    font-family: 'Slabo 13px', Georgia, serif;
+  }
+}
+
+.font-instrument {
+  font-family: 'Instrument Serif', Georgia, serif;
+}
+
+.font-yellowtail {
+  font-family: 'Yellowtail', cursive;
+}
+
+.font-slabo {
+  font-family: 'Slabo 13px', Georgia, serif;
+}
