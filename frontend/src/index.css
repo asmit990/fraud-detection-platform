@@ -1,0 +1,12 @@
+@import url('https://fonts.googleapis.com/css2?family=Slabo+13px&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-white text-slate-800 antialiased selection:bg-indigo-100 selection:text-indigo-900;
+    font-family: 'Slabo 13px', Georgia, serif;
+  }
+}
