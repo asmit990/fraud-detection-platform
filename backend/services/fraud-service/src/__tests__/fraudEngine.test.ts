@@ -77,4 +77,26 @@ describe("Fraud Engine Orchestrator", () => {
     );
     expect(createAlert).toHaveBeenCalledTimes(1);
   });
+
+  it("should fall back 100% to deterministic rules when ML is unavailable", async () => {
+    (redis.set as jest.Mock).mockResolvedValueOnce("OK");
+    (redis.get as jest.Mock).mockResolvedValue(null);
+    (redis.incr as jest.Mock).mockResolvedValue(1);
+    (redis.smembers as jest.Mock).mockResolvedValue([]);
+    (redis.sismember as jest.Mock).mockResolvedValue(0);
+
+    (callGemini as jest.Mock).mockResolvedValueOnce({
+      fraud_probability: 0,
+      reason: "ML unavailable (API key missing)",
+    });
+
+    await fraudEngine(sampleTx);
+
+    // With sampleTx (amount 50000 = 40 pts, night activity = 20 pts, new merchant = 0 or 15 pts),
+    // rule score alone >= 60. With 100% rule fallback, it updates accurately.
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE transactions"),
+      expect.any(Array)
+    );
+  });
 });

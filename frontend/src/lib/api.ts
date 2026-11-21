@@ -74,9 +74,20 @@ export const mockTransactions: Transaction[] = [
   }
 ];
 
+function getAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  const headers: Record<string, string> = { ...extraHeaders };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 export async function fetchTransactions(): Promise<Transaction[]> {
   try {
-    const res = await fetch('http://localhost:3001/api/transactions');
+    const res = await fetch('http://localhost:3001/api/transactions', {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error('API Offline');
     const json = await res.json();
     const list = Array.isArray(json) ? json : json.transactions || [];
@@ -102,7 +113,9 @@ export async function fetchTransactions(): Promise<Transaction[]> {
 
 export async function fetchAnalytics(): Promise<AnalyticsSummary> {
   try {
-    const res = await fetch('http://localhost:3002/api/analytics/summary');
+    const res = await fetch('http://localhost:3003/api/analytics/summary', {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error('Analytics API Offline');
     return await res.json();
   } catch {
@@ -128,10 +141,10 @@ export async function ingestTransaction(payload: {
   try {
     const res = await fetch('http://localhost:3001/api/transactions', {
       method: 'POST',
-      headers: {
+      headers: getAuthHeaders({
         'Content-Type': 'application/json',
         'Idempotency-Key': idempotencyKey,
-      },
+      }),
       body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error('Ingestion failed');
@@ -149,6 +162,7 @@ export async function blockTransaction(id: string): Promise<boolean> {
   try {
     const res = await fetch(`http://localhost:3001/api/transactions/${id}/block`, {
       method: 'POST',
+      headers: getAuthHeaders(),
     });
     return res.ok;
   } catch {
