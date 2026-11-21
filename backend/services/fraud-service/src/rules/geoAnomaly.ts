@@ -1,18 +1,18 @@
-
 import redis from "../redis";
 
 export default async function geoAnomalyRule(
-   userId: string, country: string
+   userId: string,
+   country: string
 ): Promise<number> {
-    
-     const deivce = await redis.get(`geo:${userId}`);
-   
-     await redis.set(`geo:${userId}`, country);
+   const key = `geo:${userId}`;
 
-     if (deivce && deivce !== country) {
-        return 30;
-     }
-     else {
-        return 0;
-     }
+   const previousCountry = await redis.get(key);
+
+   await redis.set(key, country);
+
+   if (previousCountry && previousCountry !== country) {
+      return 30;
+   }
+
+   return 0;
 }

@@ -9,7 +9,7 @@ import deviceAnomalyRule from "../rules/deviceAnomaly";
 import { nightActivityRule } from "../rules/nightActivity";
 import { callGemini } from "../services/geminiService";
 import { ipReputation } from "../rules/ipReputation";
-import { 
+import {
   multipleFailedAttemptsRule,
   recordFailedAttempt,
   resetFailedAttempts
@@ -17,16 +17,15 @@ import {
 import { unusualMerchantRule } from "../rules/unusualMerchant";
 
 export async function fraudEngine(transaction: Transaction): Promise<void> {
-  // 1. Consumer-Side Deduplication (Guarantees Exactly-Once Processing for At-Least-Once Kafka Streams)
   const dedupKey = `processed_events:${transaction.id}`;
   const isFirstProcessing = await redis.set(dedupKey, "1", "EX", 86400, "NX");
-  
+
   if (!isFirstProcessing) {
     console.log(`[fraudEngine] Duplicate event detected for transaction ${transaction.id}. Skipping.`);
     return;
   }
 
-  // 2. Evaluate all 8 deterministic fraud rules in parallel
+
   const [
     largeAmountScore,
     velocityScore,
@@ -60,20 +59,30 @@ export async function fraudEngine(transaction: Transaction): Promise<void> {
     failedScore +
     merchantScore;
 
-  // 3. Evaluate Google Gemini ML inference with timeout & fallback resilience
   let mlResult = {
     fraud_probability: 0,
     reason: "ML unavailable",
   };
+  let isMlAvailable = false;
 
   try {
     mlResult = await callGemini(transaction);
+    const reasonLower = (mlResult.reason || "").toLowerCase();
+    isMlAvailable =
+      !reasonLower.includes("unavailable") &&
+      !reasonLower.includes("timed out") &&
+      !reasonLower.includes("rate limited") &&
+      !reasonLower.includes("empty response");
   } catch (err) {
     console.warn("Gemini execution caught error — using rules only:", err);
+    isMlAvailable = false;
   }
 
   const mlScore = mlResult.fraud_probability * 100;
-  const finalScore = Math.min(100, Math.round(ruleScore * 0.4 + mlScore * 0.6));
+
+  const finalScore = isMlAvailable
+    ? Math.min(100, Math.round(ruleScore * 0.4 + mlScore * 0.6))
+    : Math.min(100, ruleScore);
 
   const fraudStatus =
     finalScore >= 61 ? "HIGH" : finalScore >= 31 ? "MEDIUM" : "LOW";
@@ -87,11 +96,10 @@ export async function fraudEngine(transaction: Transaction): Promise<void> {
   if (ipScore > 0) reasons.push("suspicious IP");
   if (failedScore > 0) reasons.push("multiple failed attempts");
   if (merchantScore > 0) reasons.push("unusual merchant category");
-  if (mlResult.reason && !mlResult.reason.includes("unavailable")) {
+  if (isMlAvailable && mlResult.reason) {
     reasons.push(`ML: ${mlResult.reason}`);
   }
 
-  // 4. Update Postgres database with final risk score and status
   await pool.query(
     `UPDATE transactions
      SET risk_score = $1, fraud_status = $2
@@ -102,7 +110,6 @@ export async function fraudEngine(transaction: Transaction): Promise<void> {
   console.log(`Transaction ${transaction.id} → Score: ${finalScore} → Status: ${fraudStatus}`);
   console.log(`Reasons: ${reasons.join(", ") || "none"}`);
 
-  // 5. Trigger alert and failure tracking on HIGH risk
   if (fraudStatus === "HIGH") {
     await createAlert(transaction, reasons, finalScore);
     await recordFailedAttempt(transaction.user_id);

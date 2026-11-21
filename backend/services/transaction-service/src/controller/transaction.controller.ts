@@ -34,18 +34,28 @@ export async function createTransaction(
 
     const transaction = txnResult.rows[0];
 
-    // Transactional Outbox: Insert event atomically
-    await client.query(
+    // Transactional Outbox: Insert event atomically with RETURNING id
+    const outboxResult = await client.query<{ id: string }>(
       `INSERT INTO outbox_events (aggregate_id, event_type, payload)
-       VALUES ($1, $2, $3)`,
+       VALUES ($1, $2, $3)
+       RETURNING id`,
       [transaction.id, "transaction.created", JSON.stringify(transaction)]
     );
+
+    const outboxEventId = outboxResult.rows[0]?.id;
 
     await client.query("COMMIT");
 
     // Optional direct Kafka publish for immediate processing (relay acts as guarantee)
     try {
       await publishMessage(process.env.KAFKA_TOPIC ?? "transactions", transaction);
+
+      if (outboxEventId) {
+        await pool.query(
+          `UPDATE outbox_events SET published_at = NOW() WHERE id = $1`,
+          [outboxEventId]
+        );
+      }
     } catch (kafkaErr) {
       console.warn("Direct Kafka publish failed, outbox relay will deliver:", kafkaErr);
     }
