@@ -69,7 +69,9 @@ Features **Stripe/IETF-standard Idempotency**, the **Transactional Outbox Patter
 |   +------------------------------------------+   |
 |   | Google Gemini AI Forensic Reasoning      |   |
 |   +------------------------------------------+   |
-|   | Combined Score: (Rules * 0.4) + (AI * 0.6) | |
+|   | Adaptive Scoring:                        |   |
+|   | - ML Healthy: (Rules*0.4) + (AI*0.6)     |   |
+|   | - ML Down/Timeout: 100% Rules Fallback   |   |
 +--------------------------------------------------+
                        |
                        +---> Updates risk_score & fraud_status in PostgreSQL
@@ -85,16 +87,17 @@ Features **Stripe/IETF-standard Idempotency**, the **Transactional Outbox Patter
 * **Concurrency Locking (`409 Conflict`)**: Simultaneous requests with the identical key receive a `409` lock response with `Retry-After: 2` header.
 * **Sub-20ms Cached Replays**: Successfully processed idempotency keys return instantaneous replays directly from PostgreSQL with header `Idempotency-Replay: true`.
 
-### 2. Transactional Outbox Pattern
+### 2. Transactional Outbox Pattern & Zero Duplicate Publishing
 * Solves the dual-write problem across PostgreSQL and Apache Kafka.
-* The transaction record and the domain event are written in a **single atomic PostgreSQL transaction** (`BEGIN ... COMMIT`).
-* A dedicated background Outbox Relay polls unpublished records using `FOR UPDATE SKIP LOCKED` and streams them to Kafka, guaranteeing **At-Least-Once Delivery** even during broker restarts.
+* The transaction record and the domain event are written in a **single atomic PostgreSQL transaction** (`BEGIN ... COMMIT`) with `RETURNING id`.
+* **Zero Duplication**: Immediate direct dispatch marks `published_at = NOW()`; a dedicated background Outbox Relay polls any unpublished records using `FOR UPDATE SKIP LOCKED` and streams them to Kafka, guaranteeing **At-Least-Once Delivery** during broker or network failures without duplicate broadcast.
+* **Consumer-Side Deduplication**: Consumer instances check Redis atomic `SET NX` (`processed_events:${id}`) with 24h TTL, guaranteeing effectively-once processing.
 
 ### 3. Dead Letter Queue (DLQ) & Failure Recovery
 * Kafka consumer worker attempts transient event processing up to 3 times with incremental backoff delays.
 * Unrecoverable poison payloads (corrupt JSON, schema mismatches) are automatically wrapped with diagnostic error envelopes and dispatched to `transactions.dlq` to prevent Kafka partition blocking.
 
-### 4. Dual-Layer Risk Engine (Rules + Gemini ML)
+### 4. Adaptive Dual-Layer Risk Engine (Rules + Gemini ML)
 1. **8 Parallel Deterministic Rules (Redis Sub-millisecond Execution)**:
    - **Large Amount**: Flags transactions exceeding $10,000 threshold (+40 pts).
    - **Velocity Counter**: Flags accounts making > 5 transactions in 10 minutes via Redis atomic `INCR` (+30 pts).
@@ -104,9 +107,10 @@ Features **Stripe/IETF-standard Idempotency**, the **Transactional Outbox Patter
    - **IP Reputation**: Checks blacklisted subnets and TOR exit nodes (+35 pts).
    - **Consecutive Failed Attempts**: Triggers on 5+ sequential declined attempts (+30 pts).
    - **Unusual Merchant Category**: Flags high-risk industries (crypto, gambling, firearms) (+25 pts).
-2. **Google Gemini 1.5 Flash AI Reasoning (60% Weight)**:
+2. **Google Gemini 1.5 Flash AI Reasoning & Dynamic Fallback**:
    - Evaluates contextual anomalies and provides explainable forensic reasoning strings.
    - Built-in 3.5s timeout with automatic rule-based fallback.
+   - **Dynamic Weighting**: Blends (Rules $\times 0.4$ + ML $\times 0.6$) when Gemini is available. If the AI model times out, is rate-limited, or has no key, the engine automatically shifts to **100% deterministic rule score** fallback without deflating fraud thresholds.
 
 ---
 
@@ -134,6 +138,7 @@ fraud-platform/
     ├── scripts/
     │   └── simulate.ts             # High-throughput mock traffic generator
     └── services/
+        ├── auth-service/           # JWT security, token clearance & analyst auth (Port 3000)
         ├── transaction-service/    # Ingestion API, Idempotency & Outbox Relay (Port 3001)
         ├── fraud-service/          # Kafka consumer, 8 Rules & Gemini AI ML Engine
         ├── analytics-service/      # Aggregation & metrics endpoints (Port 3003)
@@ -171,16 +176,19 @@ docker-compose up -d
 
 #### 2. Start Microservices
 ```bash
-# Terminal 1 — Transaction Ingestion Service (Port 3001)
+# Terminal 1 — Auth & Analyst Identity Service (Port 3000)
+cd backend/services/auth-service && npm run dev
+
+# Terminal 2 — Transaction Ingestion Service (Port 3001)
 cd backend/services/transaction-service && npm run dev
 
-# Terminal 2 — Fraud Scoring Engine & AI
+# Terminal 3 — Fraud Scoring Engine & AI
 cd backend/services/fraud-service && npm run dev
 
-# Terminal 3 — Analytics Service (Port 3003)
+# Terminal 4 — Analytics Service (Port 3003)
 cd backend/services/analytics-service && npm run dev
 
-# Terminal 4 — Alert & Email Dispatcher
+# Terminal 5 — Alert & Email Dispatcher
 cd backend/services/alert-service && npm run dev
 ```
 
